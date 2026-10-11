@@ -97,6 +97,7 @@
   .ring .num { position:relative; font-size:3.6rem; font-weight:900; line-height:1; background:linear-gradient(135deg,var(--p1),var(--p2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .ring .num small { display:block; font-size:.8rem; color:var(--muted); -webkit-text-fill-color:var(--muted); font-weight:800; margin-top:4px; }
   .emoji { font-size:3rem; }
+  .warnbox { background:#fff7ed; border:2px solid #fdba74; color:#9a3412; font-weight:900; border-radius:18px; padding:12px 14px; margin-top:10px; line-height:1.45; }
   .msg { font-size:1.4rem; font-weight:900; margin:4px 0; }
   .stats { display:flex; gap:10px; margin:16px 0 8px; }
   .stat { flex:1; border-radius:18px; padding:12px 6px; font-weight:800; font-size:.85rem; }
@@ -195,6 +196,7 @@
     <div class="msg" id="hmsg"></div>
     <div class="sub" id="hnama" style="margin:0"></div>
     <div class="ring" id="ring"><div class="num"><span id="hnilai">0</span><small>NILAI</small></div></div>
+    <div class="warnbox hidden" id="pesan">📵 Kamu harus belajar dengan giat, jangan main HP, terutama TikTok-an!</div>
     <div class="stats">
       <div class="stat g"><b id="hbenar">0</b>Benar</div>
       <div class="stat r"><b id="hsalah">0</b>Salah</div>
@@ -282,9 +284,21 @@ function nada(freq, mulai, dur, tipe, vol) {
   const o = c.createOscillator(), g = c.createGain(), t = c.currentTime + mulai;
   o.type = tipe || 'sine'; o.frequency.setValueAtTime(freq, t);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol || 0.6, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(vol || 1, t + 0.01);
+  g.gain.setValueAtTime(vol || 1, t + Math.max(0.02, dur - 0.06));
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.05);
+  o.connect(g); g.connect(keluaran(c)); o.start(t); o.stop(t + dur + 0.05);
+}
+// Penguat + limiter supaya bunyi sekeras mungkin tanpa pecah
+let master = null;
+function keluaran(c) {
+  if (!master) {
+    master = c.createGain(); master.gain.value = 1.8;
+    const k = c.createDynamicsCompressor();
+    k.threshold.value = -24; k.knee.value = 0; k.ratio.value = 20; k.attack.value = 0.002; k.release.value = 0.15;
+    master.connect(k); k.connect(c.destination);
+  }
+  return master;
 }
 /* ---------- Suara ucapan (Web Speech) ---------- */
 let suaraId = null;
@@ -305,9 +319,10 @@ function ucap(teks) {
     speechSynthesis.speak(u);
   } catch (e) {}
 }
-function suaraBenar() { nada(784, 0, .12, 'triangle', .6); nada(1047, .1, .2, 'triangle', .6); ucap('Kamu benar'); }
-function suaraSalah() { nada(200, 0, .25, 'sawtooth', .35); ucap('Kamu salah'); }
-function suaraSelesai() { [523, 659, 784, 1047].forEach((f, i) => nada(f, i * .13, .3, 'triangle', .5)); }
+function suaraBenar() { nada(784, 0, .14, 'square', 1); nada(1047, .12, .14, 'square', 1); nada(1568, .24, .28, 'square', 1); ucap('Kamu benar'); }
+function suaraSalah() { nada(240, 0, .22, 'sawtooth', 1); nada(150, .2, .4, 'sawtooth', 1); ucap('Kamu salah'); }
+function suaraSelesai() { [523, 659, 784, 1047].forEach((f, i) => nada(f, i * .13, .3, 'square', 1)); }
+function suaraNasihat() { nada(330, 0, .25, 'sawtooth', 1); nada(247, .22, .4, 'sawtooth', 1); ucap('Kamu harus belajar dengan giat, jangan main HP, terutama TikTok-an'); }
 function toggleSuara() {
   suaraOn = !suaraOn;
   $('snd').textContent = suaraOn ? '🔊' : '🔇';
@@ -404,8 +419,9 @@ function tampilHasil(r) {
       ${ok ? '' : `<div class="ra">Jawaban benar: <b>${r.kunci[i]}. ${frac(s.o[bi])}</b></div>`}
     </div>`;
   }).join('');
-  suaraSelesai();
-  if (n >= 75) confetti();
+  const rendah = n < 80;
+  $('pesan').classList.toggle('hidden', !rendah);
+  if (rendah) suaraNasihat(); else { suaraSelesai(); confetti(); }
 }
 
 /* ---------- Konfeti sederhana ---------- */
