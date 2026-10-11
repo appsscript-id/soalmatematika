@@ -200,7 +200,7 @@
     <div class="msg" id="hmsg"></div>
     <div class="sub" id="hnama" style="margin:0"></div>
     <div class="ring" id="ring"><div class="num"><span id="hnilai">0</span><small>NILAI</small></div></div>
-    <div class="warnbox hidden" id="pesan">📵 Kamu harus belajar dengan giat, jangan main HP, terutama TikTok-an!</div>
+    <div class="warnbox hidden" id="pesan">📵 Kamu harus belajar dengan giat, jangan main HP terus, terutama TikTok-an!</div>
     <div class="stats">
       <div class="stat g"><b id="hbenar">0</b>Benar</div>
       <div class="stat r"><b id="hsalah">0</b>Salah</div>
@@ -340,7 +340,7 @@ function ucap(teks) {
 function suaraBenar() { nada(784, 0, .14, 'square', 1); nada(1047, .12, .14, 'square', 1); nada(1568, .24, .28, 'square', 1); ucap('Kamu benar'); }
 function suaraSalah() { nada(240, 0, .22, 'sawtooth', 1); nada(150, .2, .4, 'sawtooth', 1); ucap('Kamu salah'); }
 function suaraSelesai() { [523, 659, 784, 1047].forEach((f, i) => nada(f, i * .13, .3, 'square', 1)); }
-function suaraNasihat() { nada(330, 0, .25, 'sawtooth', 1); nada(247, .22, .4, 'sawtooth', 1); ucap('Kamu harus belajar dengan giat, jangan main HP, terutama TikTok-an'); }
+function suaraNasihat() { nada(330, 0, .25, 'sawtooth', 1); nada(247, .22, .4, 'sawtooth', 1); ucap(nama + ', kamu harus belajar dengan giat, jangan main HP terus, terutama TikTok-an'); }
 function toggleSuara() {
   suaraOn = !suaraOn;
   $('snd').textContent = suaraOn ? '🔊' : '🔇';
@@ -353,6 +353,7 @@ let nilaiAkhir = 0;
 function ulangSuara(otomatis) {
   audio();
   const rendah = nilaiAkhir < 80;
+  $('pesan').textContent = '📵 ' + nama + ', kamu harus belajar dengan giat, jangan main HP terus, terutama TikTok-an!';
   $('pesan').classList.toggle('hidden', !rendah);
   if (rendah) suaraNasihat();
   else { suaraSelesai(); if (otomatis) confetti(); }
