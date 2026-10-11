@@ -99,6 +99,8 @@
   .emoji { font-size:3rem; }
   .savebox { margin-top:10px; border-radius:14px; padding:10px 12px; font-weight:800; font-size:.88rem; line-height:1.4; }
   .savebox.ok { background:var(--okbg); color:#047857; } .savebox.no { background:#fef9c3; color:#854d0e; }
+  .savebox.wait { background:#eef2ff; color:#4338ca; }
+  .savebox .mini { margin-left:6px; border:0; border-radius:10px; padding:6px 12px; font:inherit; font-weight:900; background:#f59e0b; color:#fff; cursor:pointer; }
   .warnbox { background:#fff7ed; border:2px solid #fdba74; color:#9a3412; font-weight:900; border-radius:18px; padding:12px 14px; margin-top:10px; line-height:1.45; }
   .msg { font-size:1.4rem; font-weight:900; margin:4px 0; }
   .stats { display:flex; gap:10px; margin:16px 0 8px; }
@@ -203,7 +205,7 @@
       <div class="stat g"><b id="hbenar">0</b>Benar</div>
       <div class="stat r"><b id="hsalah">0</b>Salah</div>
     </div>
-    <div class="savebox" id="simpan"></div>
+    <div class="savebox hidden" id="simpan"></div>
     <button class="btn ghost" onclick="ulangSuara(false)">🔊 Putar suara lagi</button>
     <h3>📖 Pembahasan</h3>
     <div id="review"></div>
@@ -212,6 +214,10 @@
 </div>
 
 <script>
+// Alamat web app Google Apps Script (/exec) tempat nilai dikirim.
+// Kosongkan ('') jika hanya ingin mencoba tanpa menyimpan nilai.
+const URL_SIMPAN = 'https://script.google.com/macros/s/AKfycbx16vbYfAZKLb1ah0MD07HUYuPzQn3vRBitCM2Mqv1KH-W54Zao0C6Ehe3EaoGd-Pve/exec';
+
 // ===== BANK SOAL =====
 const SOAL = [
   // --- Pola bilangan membesar ---
@@ -403,22 +409,39 @@ function pilih(i) {
   }, benar ? 1700 : 2400);
 }
 
-/* ---------- Kirim ke Google Sheet & tampilkan hasil ---------- */
+/* ---------- Tampilkan hasil + kirim nilai ke Google Sheet ---------- */
+const idKirim = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); // anti data ganda
+
 function kirim() {
-  tampilPanel('loading');
-  $('loadErr').classList.add('hidden');
-  if (typeof google === 'undefined' || !google.script) {
-    // dibuka langsung sebagai file (bukan lewat web app): hitung lokal saja
-    const bps = KUNCI.map((k, i) => jawab[i] === k), b = bps.filter(Boolean).length;
-    return tampilHasil({ benar: b, nilai: Math.round(b / SOAL.length * 100), benarPerSoal: bps, kunci: KUNCI, tersimpan: false });
+  const bps = KUNCI.map((k, i) => jawab[i] === k), b = bps.filter(Boolean).length;
+  tampilHasil({ benar: b, nilai: Math.round(b / SOAL.length * 100), benarPerSoal: bps, kunci: KUNCI });
+  kirimNilai(); // dikirim di latar belakang, anak langsung melihat hasilnya
+}
+
+function setStatus(s) {
+  const sv = $('simpan');
+  if (s === 'hide') { sv.className = 'savebox hidden'; return; }
+  if (s === 'wait') { sv.className = 'savebox wait'; sv.textContent = '⏳ Menyimpan nilaimu...'; }
+  else if (s === 'ok') { sv.className = 'savebox ok'; sv.textContent = '✅ Nilaimu sudah tersimpan untuk guru.'; }
+  else { sv.className = 'savebox no'; sv.innerHTML = '⚠️ Nilai belum terkirim ke guru. Pastikan internet menyala. <button class="mini" onclick="kirimNilai()">Kirim ulang</button>'; }
+}
+
+async function kirimNilai() {
+  if (!URL_SIMPAN) { setStatus('hide'); return; }
+  setStatus('wait');
+  const opsi = { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                 body: JSON.stringify({ id: idKirim, nama: nama, jawaban: jawab }) };
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
+    const res = await fetch(URL_SIMPAN, Object.assign({ signal: ctl.signal }, opsi));
+    clearTimeout(to);
+    const j = await res.json();
+    setStatus(j && j.ok ? 'ok' : 'gagal');
+  } catch (e) {
+    // balasan tidak bisa dibaca browser -> kirim ulang tanpa membaca balasan (aman: server menolak data ganda)
+    try { await fetch(URL_SIMPAN, Object.assign({ mode: 'no-cors' }, opsi)); setStatus('hide'); }
+    catch (e2) { setStatus('gagal'); }
   }
-  google.script.run
-    .withSuccessHandler(tampilHasil)
-    .withFailureHandler(e => {
-      $('loadErrMsg').textContent = 'Gagal menyimpan: ' + (e && e.message ? e.message : 'koneksi bermasalah');
-      $('loadErr').classList.remove('hidden');
-    })
-    .kirimJawaban({ nama: nama, jawaban: jawab });
 }
 
 function tampilHasil(r) {
@@ -441,11 +464,6 @@ function tampilHasil(r) {
       ${ok ? '' : `<div class="ra">Jawaban benar: <b>${r.kunci[i]}. ${frac(s.o[bi])}</b></div>`}
     </div>`;
   }).join('');
-  const sv = $('simpan');
-  sv.className = 'savebox ' + (r.tersimpan ? 'ok' : 'no');
-  sv.textContent = r.tersimpan
-    ? '✅ Nilaimu sudah tersimpan di spreadsheet guru.'
-    : '⚠️ Mode uji coba: nilai TIDAK tersimpan di spreadsheet (halaman dibuka langsung, bukan lewat link web app).';
   nilaiAkhir = n;
   ulangSuara(true);
 }
