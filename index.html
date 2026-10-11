@@ -50,6 +50,7 @@
   }
   .btn:hover { transform:translateY(-2px); }
   .btn:active { transform:translateY(1px) scale(.99); }
+  .btn.ghost { margin-top:10px; background:#eef2ff; color:#4338ca; box-shadow:none; font-size:.95rem; padding:12px; }
 
   /* ---------- Kuis ---------- */
   .bar-top { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
@@ -159,7 +160,8 @@
     </div>
     <div class="err" id="err"></div>
     <button class="btn" onclick="mulai()">🚀 Mulai Mengerjakan</button>
-    <p class="sub" style="margin:14px 0 0;font-size:.85rem">Pilih satu jawaban, lalu soal berikutnya muncul otomatis. Jawaban tidak bisa diubah, jadi teliti ya!</p>
+    <button class="btn ghost" onclick="tesSuara()">🔊 Tes suara</button>
+    <p class="sub" style="margin:14px 0 0;font-size:.85rem">Nyalakan volume ya! Pilih satu jawaban, lalu soal berikutnya muncul otomatis. Jawaban tidak bisa diubah, jadi teliti ya!</p>
   </section>
 
   <!-- KUIS -->
@@ -280,23 +282,45 @@ function nada(freq, mulai, dur, tipe, vol) {
   const o = c.createOscillator(), g = c.createGain(), t = c.currentTime + mulai;
   o.type = tipe || 'sine'; o.frequency.setValueAtTime(freq, t);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(vol || 0.6, t + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.05);
 }
-function suaraBenar() { nada(660, 0, .14, 'triangle', .3); nada(880, .12, .14, 'triangle', .3); nada(1320, .24, .28, 'triangle', .28); }
-function suaraSalah() { nada(220, 0, .2, 'sawtooth', .18); nada(147, .18, .38, 'sawtooth', .18); }
-function suaraSelesai() { [523, 659, 784, 1047].forEach((f, i) => nada(f, i * .13, .3, 'triangle', .28)); }
+/* ---------- Suara ucapan (Web Speech) ---------- */
+let suaraId = null;
+const bisaUcap = ('speechSynthesis' in window) && ('SpeechSynthesisUtterance' in window);
+function pilihSuara() {
+  if (!bisaUcap) return;
+  const v = speechSynthesis.getVoices();
+  suaraId = v.find(x => /^id([-_]|$)/i.test(x.lang)) || v.find(x => /indones/i.test(x.name)) || null;
+}
+if (bisaUcap) { pilihSuara(); speechSynthesis.onvoiceschanged = pilihSuara; }
+function ucap(teks) {
+  if (!suaraOn || !bisaUcap) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(teks);
+    u.lang = 'id-ID'; if (suaraId) u.voice = suaraId;
+    u.rate = 0.95; u.pitch = 1.15; u.volume = 1;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function suaraBenar() { nada(784, 0, .12, 'triangle', .6); nada(1047, .1, .2, 'triangle', .6); ucap('Kamu benar'); }
+function suaraSalah() { nada(200, 0, .25, 'sawtooth', .35); ucap('Kamu salah'); }
+function suaraSelesai() { [523, 659, 784, 1047].forEach((f, i) => nada(f, i * .13, .3, 'triangle', .5)); }
 function toggleSuara() {
   suaraOn = !suaraOn;
   $('snd').textContent = suaraOn ? '🔊' : '🔇';
+  if (!suaraOn && bisaUcap) speechSynthesis.cancel();
 }
+function tesSuara() { audio(); suaraBenar(); }
 
 /* ---------- Alur kuis ---------- */
 function mulai() {
   nama = $('nama').value.trim();
   if (!nama) { $('err').textContent = 'Tulis namamu dulu ya 😊'; $('nama').focus(); return; }
   audio(); // aktifkan suara (butuh klik pengguna)
+  if (bisaUcap) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} }
   $('who').textContent = nama;
   tampilPanel('quiz');
   tampil();
@@ -330,8 +354,8 @@ function pilih(i) {
     else if (HURUF[k] === KUNCI[idx]) btns[k].classList.add('ok');
     else btns[k].classList.add('dim');
   }
-  if (benar) { skor++; suaraBenar(); $('toast').textContent = '🎉 Benar! Hebat!'; $('toast').className = 'toast ok'; }
-  else { suaraSalah(); $('toast').textContent = `😅 Belum tepat. Jawaban benar: ${KUNCI[idx]}`; $('toast').className = 'toast bad'; }
+  if (benar) { skor++; suaraBenar(); $('toast').textContent = '🎉 Kamu benar!'; $('toast').className = 'toast ok'; }
+  else { suaraSalah(); $('toast').textContent = `😅 Kamu salah. Jawaban benar: ${KUNCI[idx]}`; $('toast').className = 'toast bad'; }
   $('skor').textContent = skor;
   const done = Math.round((idx + 1) / SOAL.length * 100);
   $('prog').style.width = done + '%'; $('persen').textContent = done + '%';
@@ -339,7 +363,7 @@ function pilih(i) {
   timer = setTimeout(() => {
     if (idx < SOAL.length - 1) { idx++; tampil(); }
     else kirim();
-  }, benar ? 1000 : 1900);
+  }, benar ? 1700 : 2400);
 }
 
 /* ---------- Kirim ke Google Sheet & tampilkan hasil ---------- */
