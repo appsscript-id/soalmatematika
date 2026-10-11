@@ -97,6 +97,8 @@
   .ring .num { position:relative; font-size:3.6rem; font-weight:900; line-height:1; background:linear-gradient(135deg,var(--p1),var(--p2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .ring .num small { display:block; font-size:.8rem; color:var(--muted); -webkit-text-fill-color:var(--muted); font-weight:800; margin-top:4px; }
   .emoji { font-size:3rem; }
+  .savebox { margin-top:10px; border-radius:14px; padding:10px 12px; font-weight:800; font-size:.88rem; line-height:1.4; }
+  .savebox.ok { background:var(--okbg); color:#047857; } .savebox.no { background:#fef9c3; color:#854d0e; }
   .warnbox { background:#fff7ed; border:2px solid #fdba74; color:#9a3412; font-weight:900; border-radius:18px; padding:12px 14px; margin-top:10px; line-height:1.45; }
   .msg { font-size:1.4rem; font-weight:900; margin:4px 0; }
   .stats { display:flex; gap:10px; margin:16px 0 8px; }
@@ -201,6 +203,8 @@
       <div class="stat g"><b id="hbenar">0</b>Benar</div>
       <div class="stat r"><b id="hsalah">0</b>Salah</div>
     </div>
+    <div class="savebox" id="simpan"></div>
+    <button class="btn ghost" onclick="ulangSuara(false)">🔊 Putar suara lagi</button>
     <h3>📖 Pembahasan</h3>
     <div id="review"></div>
   </section>
@@ -309,14 +313,22 @@ function pilihSuara() {
   suaraId = v.find(x => /^id([-_]|$)/i.test(x.lang)) || v.find(x => /indones/i.test(x.name)) || null;
 }
 if (bisaUcap) { pilihSuara(); speechSynthesis.onvoiceschanged = pilihSuara; }
+let ucapanAktif = null, ucapToken = 0;
 function ucap(teks) {
   if (!suaraOn || !bisaUcap) return;
   try {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(teks);
-    u.lang = 'id-ID'; if (suaraId) u.voice = suaraId;
-    u.rate = 0.95; u.pitch = 1.15; u.volume = 1;
-    speechSynthesis.speak(u);
+    const tok = ++ucapToken;
+    // Jeda singkat setelah cancel(): di Chrome, speak() langsung setelah cancel() sering diabaikan
+    setTimeout(() => {
+      if (tok !== ucapToken) return;
+      const u = new SpeechSynthesisUtterance(teks);
+      u.lang = 'id-ID'; if (suaraId) u.voice = suaraId;
+      u.rate = 0.95; u.pitch = 1.15; u.volume = 1;
+      ucapanAktif = u; // simpan referensi supaya tidak dibuang browser sebelum selesai
+      speechSynthesis.resume();
+      speechSynthesis.speak(u);
+    }, 150);
   } catch (e) {}
 }
 function suaraBenar() { nada(784, 0, .14, 'square', 1); nada(1047, .12, .14, 'square', 1); nada(1568, .24, .28, 'square', 1); ucap('Kamu benar'); }
@@ -329,6 +341,16 @@ function toggleSuara() {
   if (!suaraOn && bisaUcap) speechSynthesis.cancel();
 }
 function tesSuara() { audio(); suaraBenar(); }
+
+// Putar suara hasil akhir. Tombol "Putar suara lagi" memanggil ini lewat klik, sehingga pasti diizinkan browser.
+let nilaiAkhir = 0;
+function ulangSuara(otomatis) {
+  audio();
+  const rendah = nilaiAkhir < 80;
+  $('pesan').classList.toggle('hidden', !rendah);
+  if (rendah) suaraNasihat();
+  else { suaraSelesai(); if (otomatis) confetti(); }
+}
 
 /* ---------- Alur kuis ---------- */
 function mulai() {
@@ -388,7 +410,7 @@ function kirim() {
   if (typeof google === 'undefined' || !google.script) {
     // dibuka langsung sebagai file (bukan lewat web app): hitung lokal saja
     const bps = KUNCI.map((k, i) => jawab[i] === k), b = bps.filter(Boolean).length;
-    return tampilHasil({ benar: b, nilai: Math.round(b / SOAL.length * 100), benarPerSoal: bps, kunci: KUNCI });
+    return tampilHasil({ benar: b, nilai: Math.round(b / SOAL.length * 100), benarPerSoal: bps, kunci: KUNCI, tersimpan: false });
   }
   google.script.run
     .withSuccessHandler(tampilHasil)
@@ -419,9 +441,13 @@ function tampilHasil(r) {
       ${ok ? '' : `<div class="ra">Jawaban benar: <b>${r.kunci[i]}. ${frac(s.o[bi])}</b></div>`}
     </div>`;
   }).join('');
-  const rendah = n < 80;
-  $('pesan').classList.toggle('hidden', !rendah);
-  if (rendah) suaraNasihat(); else { suaraSelesai(); confetti(); }
+  const sv = $('simpan');
+  sv.className = 'savebox ' + (r.tersimpan ? 'ok' : 'no');
+  sv.textContent = r.tersimpan
+    ? '✅ Nilaimu sudah tersimpan di spreadsheet guru.'
+    : '⚠️ Mode uji coba: nilai TIDAK tersimpan di spreadsheet (halaman dibuka langsung, bukan lewat link web app).';
+  nilaiAkhir = n;
+  ulangSuara(true);
 }
 
 /* ---------- Konfeti sederhana ---------- */
